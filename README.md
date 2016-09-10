@@ -1,5 +1,5 @@
 # tick
-Simple app that heartbeats itself with a registry
+Simple app that heartbeats itself with an [a8registry](https://github.com/amalgam8/registry)
 
 ## Usage
 Push and start app
