@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -60,11 +62,17 @@ func (h *heartbeat) Send() error {
 	url := fmt.Sprintf("http://%s/api/v1/instances", h.Host)
 	fmt.Println("url:", url)
 
+	// hack: use instance ip if overlay not present
+	ip := getOverlayAddr()
+	if ip == "" {
+		ip = os.Getenv("CF_INSTANCE_IP")
+	}
+
 	s := serviceInstance{
 		ServiceName: fmt.Sprintf("%s/%s", os.Getenv("CF_INSTANCE_GUID"), os.Getenv("CF_INSTANCE_INDEX")),
 		Endpoint: serviceEndpoint{
 			Type:  "tcp",
-			Value: fmt.Sprintf("%s:%s", os.Getenv("CF_INSTANCE_IP"), os.Getenv("CF_INSTANCE_PORT")),
+			Value: fmt.Sprintf("%s:%s", ip, os.Getenv("CF_INSTANCE_PORT")),
 		},
 		Status: "UP",
 		TTL:    60,
@@ -90,6 +98,21 @@ func (h *heartbeat) Send() error {
 	fmt.Println("response Body:", string(body))
 
 	return nil
+}
+
+func getOverlayAddr() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	var overlayIP string
+	for _, addr := range addrs {
+		listenAddr := strings.Split(addr.String(), "/")[0]
+		if strings.HasPrefix(listenAddr, "10.255.") {
+			overlayIP = listenAddr
+		}
+	}
+	return overlayIP
 }
 
 func main() {
