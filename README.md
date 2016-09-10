@@ -1,4 +1,4 @@
-# ❤ tick ❤
+# tick ❤
 Simple app that heartbeats itself with an [a8registry](https://github.com/amalgam8/registry) 
 and tests container to container connectivity.
 
