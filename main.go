@@ -15,6 +15,8 @@ import (
 
 const interval = 10 * time.Second
 
+var ip string
+
 type serviceInstance struct {
 	ServiceName string          `json:"service_name"`
 	Endpoint    serviceEndpoint `json:"endpoint"`
@@ -62,20 +64,14 @@ func (h *heartbeat) Send() error {
 	url := fmt.Sprintf("http://%s/api/v1/instances", h.Host)
 	fmt.Println("url:", url)
 
-	// hack: use instance ip if overlay not present
-	ip := getOverlayAddr()
-	if ip == "" {
-		ip = os.Getenv("CF_INSTANCE_IP")
-	}
-
 	s := serviceInstance{
 		ServiceName: fmt.Sprintf("%s/%s", os.Getenv("CF_INSTANCE_GUID"), os.Getenv("CF_INSTANCE_INDEX")),
 		Endpoint: serviceEndpoint{
 			Type:  "tcp",
-			Value: fmt.Sprintf("%s:%s", ip, os.Getenv("CF_INSTANCE_PORT")),
+			Value: fmt.Sprintf("%s:%d", ip, 8080),
 		},
 		Status: "UP",
-		TTL:    60,
+		TTL:    20,
 	}
 
 	jsonStr, err := json.Marshal(s)
@@ -126,6 +122,12 @@ func main() {
 		panic("Missing REGISTRY_HOST env variable")
 	}
 
+	// hack: use instance ip if overlay not present
+	ip = getOverlayAddr()
+	if ip == "" {
+		ip = os.Getenv("CF_INSTANCE_IP")
+	}
+
 	heartbeat := newHeartbeat(interval, host)
 	go heartbeat.Start()
 
@@ -134,7 +136,7 @@ func main() {
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
-	s := fmt.Sprintf("endpoint: %s:%s\n", os.Getenv("CF_INSTANCE_IP"), os.Getenv("CF_INSTANCE_PORT"))
+	s := fmt.Sprintf("endpoint: %s:%d\n", ip, 8080)
 	fmt.Printf(s)
 	fmt.Fprintf(w, s)
 }
