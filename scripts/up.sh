@@ -1,4 +1,4 @@
-for run in {1..20}
+for run in {1..1}
 do
   date
   app=tick$run
