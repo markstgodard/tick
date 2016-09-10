@@ -1,0 +1,5 @@
+{
+	"ImportPath": "github.com/markstgodard/tick",
+	"GoVersion": "go1.5",
+	"Deps": []
+}
