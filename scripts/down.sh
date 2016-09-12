@@ -1,4 +1,4 @@
-for run in {1..25}
+for run in {1..3}
 do
   app=tick$run
   echo $app
