@@ -93,9 +93,12 @@ func (h *heartbeat) Ping() {
 	}
 	defer resp.Body.Close()
 
-	ttp := time.Since(start)
+	latency := time.Since(start)
 
-	fmt.Printf("TTP: [%v] source [%s] target [%s]\n", ttp, h.IP, h.Peer.Address)
+	latencyMs := latency.Nanoseconds() / 1e6
+	fmt.Printf("latency(ms): %v\n", latencyMs)
+
+	fmt.Printf("latency: [%v] source [%s] target [%s]\n", latency, h.IP, h.Peer.Address)
 }
 
 func (h *heartbeat) Send() error {
