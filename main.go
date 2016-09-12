@@ -45,6 +45,7 @@ func newHeartbeat(interval time.Duration, registryHost, ip, appName string) *hea
 		IP:           ip,
 		RegistryHost: registryHost,
 		interval:     interval,
+		Polling:      true,
 		doneChan:     make(chan chan struct{}),
 	}
 }
@@ -87,7 +88,7 @@ func (h *heartbeat) Ping() {
 	start := time.Now()
 	resp, err := http.Get(fmt.Sprintf("http://%s", h.Peer.Address))
 	if err != nil {
-		fmt.Printf("could not talk to peer: %s\n", h.Peer.Address)
+		fmt.Printf("Error [%s] talking to peer: %s\n", err.Error(), h.Peer.Address)
 		return
 	}
 	defer resp.Body.Close()
@@ -230,14 +231,12 @@ func main() {
 	go heartbeater.PingPeers()
 
 	http.HandleFunc("/", index)
-	http.HandleFunc("/poll", poll)
 	http.HandleFunc("/access", access)
 	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), nil))
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
 	s := fmt.Sprintf("app: %s ip:%s:%d peer:%s\n", heartbeater.AppName, heartbeater.IP, 8080, heartbeater.Peer)
-	fmt.Printf(s)
 	fmt.Fprintf(w, s)
 }
 
@@ -247,20 +246,4 @@ func access(w http.ResponseWriter, r *http.Request) {
 	otherApp := strings.Split(heartbeater.Peer.AppName, "/")[0]
 	s := fmt.Sprintf("cf access-allow %s %s --protocol tcp --port 8080", heartbeater.AppName, otherApp)
 	fmt.Fprintf(w, s)
-}
-
-// post to turn on, delete to turn off
-func poll(w http.ResponseWriter, r *http.Request) {
-	heartbeater.Lock()
-	defer heartbeater.Unlock()
-
-	if r.Method == http.MethodPost {
-		heartbeater.Polling = true
-		w.WriteHeader(http.StatusOK)
-	}
-	if r.Method == http.MethodDelete {
-		heartbeater.Polling = false
-		w.WriteHeader(http.StatusOK)
-	}
-	w.WriteHeader(http.StatusInternalServerError)
 }
