@@ -204,7 +204,7 @@ func index(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, s)
 }
 func access(w http.ResponseWriter, r *http.Request) {
-	s := fmt.Sprintf("cf access-allow %s %s --protocol tcp --port 8080", heartbeater.AppName, heartbeater.Peer.AppName)
-	fmt.Printf(s)
+	otherApp := strings.Split(heartbeater.Peer.AppName, "/")[0]
+	s := fmt.Sprintf("cf access-allow %s %s --protocol tcp --port 8080", heartbeater.AppName, otherApp)
 	fmt.Fprintf(w, s)
 }
