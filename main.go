@@ -22,12 +22,17 @@ const interval = 5 * time.Second
 
 var heartbeater *heartbeat
 
+type Peer struct {
+	AppName string
+	Address string
+}
+
 type heartbeat struct {
 	AppName      string
 	IP           string
 	RegistryHost string
 	interval     time.Duration
-	Peer         string
+	Peer         Peer
 	doneChan     chan chan struct{}
 }
 
@@ -62,8 +67,8 @@ func (h *heartbeat) Send() error {
 	fmt.Println("url:", url)
 
 	tags := []string{}
-	if h.Peer != "" {
-		tags = append(tags, fmt.Sprintf("peer=%s", h.Peer))
+	if h.Peer.Address != "" {
+		tags = append(tags, fmt.Sprintf("%s=%s", h.Peer.AppName, h.Peer.Address))
 	}
 
 	s := registry.ServiceInstance{
@@ -123,9 +128,13 @@ func (h *heartbeat) FindPeer() {
 	randIndices := random.Perm(total)
 	for i := 0; i < total; i++ {
 		randIdx := randIndices[i]
+		otherApp := instances.ServiceInstances[randIdx].ServiceName
 		otherIP := instances.ServiceInstances[randIdx].Endpoint.Value
 		if !strings.HasPrefix(otherIP, h.IP) {
-			h.Peer = otherIP
+			h.Peer = Peer{
+				AppName: otherApp,
+				Address: otherIP,
+			}
 		}
 	}
 }
@@ -185,11 +194,17 @@ func main() {
 	go heartbeater.Start()
 
 	http.HandleFunc("/", index)
+	http.HandleFunc("/access", access)
 	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), nil))
 }
 
 func index(w http.ResponseWriter, r *http.Request) {
 	s := fmt.Sprintf("app: %s ip:%s:%d peer:%s\n", heartbeater.AppName, heartbeater.IP, 8080, heartbeater.Peer)
+	fmt.Printf(s)
+	fmt.Fprintf(w, s)
+}
+func access(w http.ResponseWriter, r *http.Request) {
+	s := fmt.Sprintf("cf access-allow %s %s --protocol tcp --port 8080", heartbeater.AppName, heartbeater.Peer.AppName)
 	fmt.Printf(s)
 	fmt.Fprintf(w, s)
 }
