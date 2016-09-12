@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/markstgodard/tick/registry"
@@ -28,11 +29,13 @@ type Peer struct {
 }
 
 type heartbeat struct {
+	sync.RWMutex
 	AppName      string
 	IP           string
 	RegistryHost string
 	interval     time.Duration
 	Peer         Peer
+	Polling      bool
 	doneChan     chan chan struct{}
 }
 
@@ -62,9 +65,40 @@ func (h *heartbeat) Start() {
 	}
 }
 
+func (h *heartbeat) PingPeers() {
+	ticker := time.NewTicker(1 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			// only start pinging if has peers
+			if h.Polling && h.Peer.Address != "" {
+				h.Ping()
+			}
+		case stopped := <-h.doneChan:
+			ticker.Stop()
+			close(stopped)
+			return
+		}
+	}
+}
+
+func (h *heartbeat) Ping() {
+	start := time.Now()
+	resp, err := http.Get(fmt.Sprintf("http://%s", h.Peer.Address))
+	if err != nil {
+		fmt.Printf("could not talk to peer: %s\n", h.Peer.Address)
+		return
+	}
+	defer resp.Body.Close()
+
+	ttp := time.Since(start)
+
+	fmt.Printf("TTP: [%v] source [%s] target [%s]\n", ttp, h.IP, h.Peer.Address)
+}
+
 func (h *heartbeat) Send() error {
 	url := fmt.Sprintf("http://%s/api/v1/instances", h.RegistryHost)
-	fmt.Println("url:", url)
 
 	tags := []string{}
 	if h.Peer.Address != "" {
@@ -97,9 +131,11 @@ func (h *heartbeat) Send() error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("Could not register app, resp code [%d]\n", resp.StatusCode)
+	}
 
+	fmt.Printf("[%s/%s] registered ip [%s]\n", h.AppName, os.Getenv("CF_INSTANCE_INDEX"), h.IP)
 	return nil
 }
 
@@ -121,7 +157,6 @@ func (h *heartbeat) FindPeer() {
 		fmt.Println("error:", err)
 		return
 	}
-	fmt.Printf("%+v", instances)
 
 	// get a random peer (exclude self)
 	total := len(instances.ServiceInstances)
@@ -192,8 +227,10 @@ func main() {
 
 	heartbeater = newHeartbeat(interval, host, ip, getAppName())
 	go heartbeater.Start()
+	go heartbeater.PingPeers()
 
 	http.HandleFunc("/", index)
+	http.HandleFunc("/poll", poll)
 	http.HandleFunc("/access", access)
 	log.Fatal(http.ListenAndServe(":"+os.Getenv("PORT"), nil))
 }
@@ -203,8 +240,27 @@ func index(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf(s)
 	fmt.Fprintf(w, s)
 }
+
+// this may not work since we are round robinning and if there are multiple app instances
+// maybe put in the service registry itself
 func access(w http.ResponseWriter, r *http.Request) {
 	otherApp := strings.Split(heartbeater.Peer.AppName, "/")[0]
 	s := fmt.Sprintf("cf access-allow %s %s --protocol tcp --port 8080", heartbeater.AppName, otherApp)
 	fmt.Fprintf(w, s)
+}
+
+// post to turn on, delete to turn off
+func poll(w http.ResponseWriter, r *http.Request) {
+	heartbeater.Lock()
+	defer heartbeater.Unlock()
+
+	if r.Method == http.MethodPost {
+		heartbeater.Polling = true
+		w.WriteHeader(http.StatusOK)
+	}
+	if r.Method == http.MethodDelete {
+		heartbeater.Polling = false
+		w.WriteHeader(http.StatusOK)
+	}
+	w.WriteHeader(http.StatusInternalServerError)
 }
